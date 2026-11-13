@@ -4,10 +4,10 @@ An independent React + TypeScript app with an English interface, large bold typo
 
 ## Start
 
-Requires Node 22.18 or newer.
+Requires Node 22.x (22.18 or newer).
 
 ```powershell
-npm install --legacy-peer-deps
+npm ci
 Copy-Item .env.example .env # only if .env does not already exist
 npm run dev
 ```
@@ -18,6 +18,21 @@ Set `SOLANA_RPC_URL` to a mainnet RPC in `.env`. Set `PINATA_JWT` for token imag
 npm run build
 npm start
 ```
+
+## Vercel
+
+Import this repository using the included `vercel.json`. It installs with `npm ci`, builds the Vite client and serves `/api/*` through a Node function. Direct navigation to Launch, Wallets, Activity and Documentation is supported. Keep the project on Node 22.x.
+
+Set these environment variables in Vercel before deploying:
+
+- `VITE_PRIVY_APP_ID`: public Privy app ID, needed at build time and by the server.
+- `PRIVY_APP_SECRET`: server-only Privy secret for session verification and wallet archiving.
+- `SOLANA_RPC_URL`: mainnet RPC URL.
+- `PINATA_JWT`: server-only Pinata credential for artwork and metadata.
+- `APP_ORIGIN`: the public HTTPS origin, for example `https://rapelaunch.xyz`.
+- `JITO_AUTH_UUID`: optional server-only Jito authentication.
+
+Add the public origin to Privy's allowed origins. Vercel's deployment and production URLs are also accepted by the API; add a preview origin to Privy if testing login there. Never prefix server credentials with `VITE_` or commit `.env`. Changing the public Privy ID requires a rebuild. Production uploads require a verified Privy session. Artwork is limited to 3 MiB so its JSON/base64 request fits Vercel's function request limit.
 
 ## Launch flow
 

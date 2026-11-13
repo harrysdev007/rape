@@ -4,7 +4,7 @@ export const limits = {
   description: 2000,
   socialUrl: 300,
   metadataUri: 200,
-  imageBytes: 5 * 1024 * 1024,
+  imageBytes: 3 * 1024 * 1024,
   walletName: 40,
   privateKeyInput: 1024,
   backupBytes: 150000,

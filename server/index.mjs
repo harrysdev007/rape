@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {Transaction,PublicKey} from '@solana/web3.js';
 import {createWalletArchiveService, WalletRequestError} from './privy-wallets.mjs';
 import {validateCreatorFeeUpdate} from './creator-fees.mjs';
+import {sameOrigin,readJsonBody as body} from './request-policy.mjs';
 import {descriptionError, limits, socialUrlError, tickerError, tokenNameError} from '../shared/form-rules.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -38,9 +39,7 @@ async function jitoCall(method,params){
   const result=await requestJson(jito,{jsonrpc:'2.0',id:1,method,params},process.env.JITO_AUTH_UUID?{'x-jito-auth':process.env.JITO_AUTH_UUID}:{});
   if(result.error)throw Error(`Jito: ${String(result.error.message||'request failed').slice(0,300)}`);return result.result;
 }
-async function body(req,max=30000){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw Error('Request is too large.');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString());}
 function respond(res,status,data){res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
-function sameOrigin(req){if(!/^127\.0\.0\.1:\d+$|^localhost:\d+$/.test(req.headers.host||''))return false;if(req.headers.origin&&req.headers.origin!==`http://${req.headers.host}`)return false;return true;}
 export function metadataCheck(data){
   const error=tokenNameError(data.name)||tickerError(data.symbol)||descriptionError(data.description)||socialUrlError(data.website)||socialUrlError(data.twitter,true);
   if(error)throw Error(error);
@@ -67,7 +66,12 @@ async function getSolPrice(){
 }
 
 async function api(req,res,url){
-  if(!sameOrigin(req))return respond(res,403,{error:'Only the local launcher can use this service.'});
+  if(!sameOrigin(req))return respond(res,403,{error:'This origin cannot use the launcher API.'});
+  if(process.env.VERCEL&&['/api/image','/api/metadata'].includes(url.pathname)){
+    if(!walletArchive)return respond(res,503,{error:'Privy server configuration is required for uploads.'});
+    try{await walletArchive.verifyUser(req.headers.authorization);}
+    catch(error){return respond(res,error instanceof WalletRequestError?error.status:401,{error:'Sign in to Privy before uploading artwork or metadata.'});}
+  }
   if(url.pathname==='/api/health'&&req.method==='GET')return respond(res,200,{rpcConfigured:!!process.env.SOLANA_RPC_URL,pinataConfigured:!!process.env.PINATA_JWT,walletArchiveConfigured:!!walletArchive,version:'1.0.0'});
   if(url.pathname==='/api/sol-price'&&req.method==='GET'){
     try{return respond(res,200,await getSolPrice());}
@@ -111,9 +115,9 @@ async function api(req,res,url){
     const metadata=metadataCheck(await body(req));return respond(res,200,await pin('pinJSONToIPFS',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinataContent:metadata,pinataOptions:{cidVersion:1}})}));
   }
   if(url.pathname==='/api/image'&&req.method==='POST'){
-    const data=await body(req,7100000),bytes=Buffer.from(data.base64||'','base64');
+    const data=await body(req,4300000),bytes=Buffer.from(data.base64||'','base64');
     const png=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpeg=bytes[0]===255&&bytes[1]===216&&bytes[2]===255,webp=bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP';
-    if(bytes.length>limits.imageBytes||!bytes.length||!(png||jpeg||webp))throw Error('Choose a PNG, JPEG or WebP image up to 5 MiB.');
+    if(bytes.length>limits.imageBytes||!bytes.length||!(png||jpeg||webp))throw Error('Choose a PNG, JPEG or WebP image up to 3 MiB.');
     const form=new FormData();form.append('file',new Blob([bytes],{type:png?'image/png':jpeg?'image/jpeg':'image/webp'}),`token.${png?'png':jpeg?'jpg':'webp'}`);form.append('pinataOptions',JSON.stringify({cidVersion:1}));
     return respond(res,200,await pin('pinFileToIPFS',{method:'POST',body:form}));
   }
@@ -124,7 +128,7 @@ export async function start(){
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url||'/','http://127.0.0.1');
     try{
-      if(url.pathname.startsWith('/api/'))return await api(req,res,url);
+      if(url.pathname.startsWith('/api/'))return await handleApi(req,res);
       if(vite)return vite.middlewares(req,res);
       const dist=resolve(root,'dist'),candidate=resolve(dist,'.'+decodeURIComponent(url.pathname));
       if(candidate!==dist&&!candidate.startsWith(dist+sep))return respond(res,403,{error:'Invalid path.'});
@@ -134,5 +138,15 @@ export async function start(){
     }catch(error){respond(res,400,{error:error instanceof Error?error.message.replace(/https?:\/\/\S+/g,'[service]'):'Request failed.'});}
   });
   const port=Number(process.env.PORT||5188);server.listen(port,'127.0.0.1',()=>console.log(`rapelaunch ready at http://127.0.0.1:${port}`));return server;
+}
+export async function handleApi(req,res,route){
+  try{
+    const url=new URL(req.url||'/','http://127.0.0.1');
+    if(route!==undefined){
+      if(typeof route!=='string'||!/^[a-z-]+$/.test(route))return respond(res,404,{error:'API route not found.'});
+      url.pathname=`/api/${route}`;url.searchParams.delete('__api');
+    }
+    return await api(req,res,url);
+  }catch(error){return respond(res,400,{error:error instanceof Error?error.message.replace(/https?:\/\/\S+/g,'[service]'):'Request failed.'});}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))await start();

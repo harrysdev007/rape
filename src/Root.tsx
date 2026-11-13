@@ -13,6 +13,7 @@ export type PrivyWallets = {
   wallets: NamedWallet[];
   archiveEnabled: boolean;
   archiveWallet: (address: string) => Promise<void>;
+  getAccessToken: () => Promise<string|null>;
   signers: ReadonlyMap<string, WalletSigner>;
   login: () => void;
   logout: () => Promise<void>;
@@ -96,6 +97,7 @@ function PrivyLauncher() {
     authenticated,
     wallets: visibleWallets,
     archiveEnabled,
+    getAccessToken,
     archiveWallet: async address => {
       if (!visibleWallets.some(wallet => wallet.address === address)) throw Error('This wallet is unavailable.');
       const token = await getAccessToken();

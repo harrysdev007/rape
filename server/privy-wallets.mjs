@@ -41,6 +41,7 @@ export function walletArchiveService(client) {
   }
 
   return {
+    verifyUser: userId,
     async archivedAddresses(authorization) {
       const user = await userId(authorization);
       const wallets = await walletsForUser(user);

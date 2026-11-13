@@ -286,14 +286,14 @@ export default function App({privy}: {privy?: PrivyWallets}){
   async function upload(file:File){
     setImageError('');
     if(!file.size||file.size>limits.imageBytes||!['image/png','image/jpeg','image/webp'].includes(file.type)){
-      setImageError('Choose a PNG, JPEG or WebP image up to 5 MiB.');return;
+      setImageError('Choose a PNG, JPEG or WebP image up to 3 MiB.');return;
     }
     setUploading(true);
     try {
       const bytes=new Uint8Array(await file.arrayBuffer());
       let binary='';
       for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-      const result=await api<{uri:string}>('image',{base64:btoa(binary)});
+      const result=await api<{uri:string}>('image',{base64:btoa(binary)},await privy?.getAccessToken()||undefined);
       setImage(result.uri);
       setPreview(URL.createObjectURL(file));
     } catch(error){setImageError(message(error));}
@@ -313,7 +313,7 @@ export default function App({privy}: {privy?: PrivyWallets}){
     const key=JSON.stringify(metadata);
     if(metadataCache.current?.key!==key){
       setProgress('Publishing token metadata…');
-      const result=await api<{uri:string}>('metadata',metadata);
+      const result=await api<{uri:string}>('metadata',metadata,await privy?.getAccessToken()||undefined);
       metadataCache.current={key,uri:result.uri};
     }
     const metadataUri=metadataCache.current.uri;
@@ -403,7 +403,7 @@ export default function App({privy}: {privy?: PrivyWallets}){
                   }}/>
                   {preview?<img src={preview} alt="Token artwork"/>:uploading?<strong role="status">Uploading image…</strong>:<strong>Upload token image</strong>}
                 </label>
-                <small id="image-rules" className="field-hint">{hosting?'Optional. PNG, JPEG or WebP, up to 5 MiB.':'Image upload unavailable. Pinata is not configured.'}</small>
+                <small id="image-rules" className="field-hint">{hosting?'Optional. PNG, JPEG or WebP, up to 3 MiB.':'Image upload unavailable. Pinata is not configured.'}</small>
                 {imageError&&<small id="image-error" className="field-error" role="alert">{imageError}</small>}
               </div>
               <div className="identity-fields">
